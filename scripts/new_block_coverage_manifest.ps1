@@ -3,11 +3,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
-    [int]$FigureCount = 0,
+    [int]$BlockCount = 0,
 
-    [string[]]$Figures,
-
-    [string[]]$RenderedPages,
+    [string[]]$Blocks,
 
     [ValidateSet("csv", "md")]
     [string]$Format,
@@ -18,18 +16,15 @@ param(
 $ErrorActionPreference = "Stop"
 
 $fields = @(
-    "Figure",
-    "RenderedPage",
-    "ExportCandidates",
-    "ChosenAsset",
-    "Method",
-    "VisualMatch",
-    "FallbackReason",
-    "FirstCitationAnchor",
-    "PlacementBasis",
-    "PlacementChecked",
-    "ReviewerNotes",
-    "Done"
+    "Page",
+    "ColumnOrRegion",
+    "BlockType",
+    "Section",
+    "FirstWords",
+    "LastWords",
+    "MarkdownAnchor",
+    "Checked",
+    "Notes"
 )
 
 if (-not $Format) {
@@ -45,15 +40,11 @@ if ((Test-Path -LiteralPath $OutputPath) -and -not $Force) {
     throw "OutputPath already exists. Use -Force to overwrite: $OutputPath"
 }
 
-if (-not $Figures -or $Figures.Count -eq 0) {
-    if ($FigureCount -lt 1) {
-        throw "Provide -FigureCount or -Figures."
+if (-not $Blocks -or $Blocks.Count -eq 0) {
+    if ($BlockCount -lt 1) {
+        throw "Provide -BlockCount or -Blocks."
     }
-    $Figures = 1..$FigureCount | ForEach-Object { "Figure $_" }
-}
-
-if ($RenderedPages -and $RenderedPages.Count -ne $Figures.Count) {
-    throw "RenderedPages count must match Figures count."
+    $Blocks = 1..$BlockCount | ForEach-Object { "Block $_" }
 }
 
 $outputParent = Split-Path -Parent $OutputPath
@@ -62,25 +53,17 @@ if ($outputParent) {
 }
 
 $rows = New-Object System.Collections.Generic.List[object]
-for ($index = 0; $index -lt $Figures.Count; $index++) {
-    $renderedPage = ""
-    if ($RenderedPages) {
-        $renderedPage = $RenderedPages[$index]
-    }
-
+foreach ($block in $Blocks) {
     $rows.Add([pscustomobject][ordered]@{
-        Figure = $Figures[$index]
-        RenderedPage = $renderedPage
-        ExportCandidates = ""
-        ChosenAsset = ""
-        Method = ""
-        VisualMatch = ""
-        FallbackReason = ""
-        FirstCitationAnchor = ""
-        PlacementBasis = "first-citation"
-        PlacementChecked = ""
-        ReviewerNotes = ""
-        Done = ""
+        Page = ""
+        ColumnOrRegion = ""
+        BlockType = $block
+        Section = ""
+        FirstWords = ""
+        LastWords = ""
+        MarkdownAnchor = ""
+        Checked = ""
+        Notes = ""
     })
 }
 
@@ -88,10 +71,9 @@ if ($Format -eq "csv") {
     $rows | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
 } else {
     $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add("# Asset Decision Manifest")
+    $lines.Add("# Block Coverage Manifest")
     $lines.Add("")
-    $lines.Add('Allowed `Method` values: `direct-export`, `crop-fallback`. Allowed `VisualMatch` values: `complete`, `incomplete`, `not-matched`.')
-    $lines.Add('Use `PlacementBasis=first-citation` and mark `PlacementChecked` only after confirming the Markdown figure appears after its first in-text citation.')
+    $lines.Add("Record every title, metadata block, heading, paragraph, caption, table, formula, acknowledgement, appendix, and intentional cutoff block.")
     $lines.Add("")
     $lines.Add("| $($fields -join ' | ') |")
     $lines.Add("| $((1..$fields.Count | ForEach-Object { '---' }) -join ' | ') |")
@@ -107,7 +89,7 @@ if ($Format -eq "csv") {
 [pscustomobject]@{
     Manifest = (Get-Item -LiteralPath $OutputPath).FullName
     Format = $Format
-    Figures = $rows.Count
+    Blocks = $rows.Count
     Fields = ($fields -join ",")
     Status = "OK"
 }

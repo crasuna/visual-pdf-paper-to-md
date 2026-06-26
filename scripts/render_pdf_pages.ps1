@@ -27,12 +27,30 @@ if ($Clean) {
     Get-ChildItem -LiteralPath $outputPath -Filter "$Prefix-*.png" -ErrorAction SilentlyContinue | Remove-Item -Force
 }
 
-$pdftoppm = (Get-Command pdftoppm -ErrorAction Stop).Source
+$pdftoppmCommand = Get-Command pdftoppm.exe -ErrorAction SilentlyContinue
+if (-not $pdftoppmCommand) {
+    $pdftoppmCommand = Get-Command pdftoppm -ErrorAction Stop
+}
+$pdftoppm = $pdftoppmCommand.Source
 $outputPrefix = Join-Path $outputPath $Prefix
+$renderInput = $inputItem.FullName
+$tempPdf = $null
 
-& $pdftoppm -r $Dpi -png $inputItem.FullName $outputPrefix
-if ($LASTEXITCODE -ne 0) {
-    throw "pdftoppm failed with exit code $LASTEXITCODE."
+if ($renderInput -match '[^\x00-\x7F]') {
+    $tempPdf = Join-Path $env:TEMP ("visual-pdf-render-" + [guid]::NewGuid().ToString("N") + ".pdf")
+    Copy-Item -LiteralPath $inputItem.FullName -Destination $tempPdf -Force
+    $renderInput = $tempPdf
+}
+
+try {
+    & $pdftoppm -r $Dpi -png $renderInput $outputPrefix
+    if ($LASTEXITCODE -ne 0) {
+        throw "pdftoppm failed with exit code $LASTEXITCODE."
+    }
+} finally {
+    if ($tempPdf -and (Test-Path -LiteralPath $tempPdf)) {
+        Remove-Item -LiteralPath $tempPdf -Force
+    }
 }
 
 $pages = Get-ChildItem -LiteralPath $outputPath -Filter "$Prefix-*.png" | Sort-Object `

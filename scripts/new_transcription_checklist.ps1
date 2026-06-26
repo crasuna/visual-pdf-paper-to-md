@@ -16,15 +16,33 @@ param(
 $ErrorActionPreference = "Stop"
 
 $inputItem = Get-Item -LiteralPath $InputPdf
-$pdfinfo = (Get-Command pdfinfo -ErrorAction Stop).Source
+$pdfinfoCommand = Get-Command pdfinfo.exe -ErrorAction SilentlyContinue
+if (-not $pdfinfoCommand) {
+    $pdfinfoCommand = Get-Command pdfinfo -ErrorAction Stop
+}
+$pdfinfo = $pdfinfoCommand.Source
 
 if ((Test-Path -LiteralPath $OutputPath) -and -not $Force) {
     throw "OutputPath already exists. Use -Force to overwrite: $OutputPath"
 }
 
-$info = & $pdfinfo $inputItem.FullName
-if ($LASTEXITCODE -ne 0) {
-    throw "pdfinfo failed with exit code $LASTEXITCODE."
+$infoInput = $inputItem.FullName
+$tempPdf = $null
+if ($infoInput -match '[^\x00-\x7F]') {
+    $tempPdf = Join-Path $env:TEMP ("visual-pdf-info-" + [guid]::NewGuid().ToString("N") + ".pdf")
+    Copy-Item -LiteralPath $inputItem.FullName -Destination $tempPdf -Force
+    $infoInput = $tempPdf
+}
+
+try {
+    $info = & $pdfinfo $infoInput
+    if ($LASTEXITCODE -ne 0) {
+        throw "pdfinfo failed with exit code $LASTEXITCODE."
+    }
+} finally {
+    if ($tempPdf -and (Test-Path -LiteralPath $tempPdf)) {
+        Remove-Item -LiteralPath $tempPdf -Force
+    }
 }
 
 $pageCount = $null

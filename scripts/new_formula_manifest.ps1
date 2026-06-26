@@ -19,9 +19,14 @@ $ErrorActionPreference = "Stop"
 
 $fields = @(
     "Formula",
-    "Page",
+    "SourcePage",
+    "SourceBlock",
+    "VisualNumber",
     "MarkdownTag",
+    "MarkdownAnchor",
     "ScreenshotAsset",
+    "DiscoveryChecked",
+    "TranscriptionChecked",
     "Uncertainty",
     "ReviewerNotes",
     "Done"
@@ -65,9 +70,14 @@ for ($index = 0; $index -lt $Formulas.Count; $index++) {
 
     $rows.Add([pscustomobject][ordered]@{
         Formula = $Formulas[$index]
-        Page = $page
+        SourcePage = $page
+        SourceBlock = ""
+        VisualNumber = ""
         MarkdownTag = ""
+        MarkdownAnchor = ""
         ScreenshotAsset = ""
+        DiscoveryChecked = ""
+        TranscriptionChecked = ""
         Uncertainty = ""
         ReviewerNotes = ""
         Done = ""
@@ -80,7 +90,7 @@ if ($Format -eq "csv") {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("# Formula Fidelity Manifest")
     $lines.Add("")
-    $lines.Add('Use `MarkdownTag` values exactly as they appear inside `\tag{...}`.')
+    $lines.Add('Record both formula discovery from the rendered page and Markdown transcription. Use `MarkdownTag` values exactly as they appear inside `\tag{...}`.')
     $lines.Add("")
     $lines.Add("| $($fields -join ' | ') |")
     $lines.Add("| $((1..$fields.Count | ForEach-Object { '---' }) -join ' | ') |")

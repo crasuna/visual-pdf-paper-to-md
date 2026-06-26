@@ -1,4 +1,4 @@
 interface:
   display_name: "Visual PDF Paper to Markdown"
-  short_description: "Visual PDF transcription; export figures first"
-  default_prompt: "Use $visual-pdf-paper-to-md to convert this academic PDF paper into Markdown from rendered page images, using direct image export before figure cropping."
+  short_description: "Visual PDF transcription with strict manifests"
+  default_prompt: "Use $visual-pdf-paper-to-md to convert this academic PDF paper into Markdown from rendered page images with complete body transcription, formula fidelity, direct image export before figure cropping, and strict full-paper manifests."
