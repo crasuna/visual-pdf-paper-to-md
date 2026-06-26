@@ -47,7 +47,7 @@ Use tools only to support the visual workflow:
 12. Convert formulas to Markdown/LaTeX when reliable; for complex or uncertain formulas, include the best verified LaTeX plus a formula crop and record discovery and transcription status in `scripts/new_formula_manifest.ps1`.
 13. Exclude the reference list when requested. Keep citations in the body; remove the `REFERENCES` heading and bibliography entries.
 14. Embed only verified direct exports or verified crops with relative Markdown image links.
-15. Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` on full-paper jobs with all required manifests. Add `-TextLayerAssisted -TextLayerDraftManifestPath ...` when embedded PDF text was used. Use `-ReferencePolicy Keep` only when the user explicitly asks to keep the reference list.
+15. Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` on full-paper jobs with `-ChecklistPath` and all required manifests. Add `-TextLayerAssisted -TextLayerDraftManifestPath ...` when embedded PDF text was used. Use `-ReferencePolicy Keep` only when the user explicitly asks to keep the reference list.
 
 ## Markdown Style Contract
 
@@ -83,6 +83,8 @@ For full-paper transcription, page-level completion is not enough.
 - Use fixed fields: `Page`, `ColumnOrRegion`, `BlockType`, `Section`, `FirstWords`, `LastWords`, `MarkdownAnchor`, `Checked`, and `Notes`.
 - Treat titles, author/venue metadata, abstract labels, headings, paragraphs, captions, tables, formulas, acknowledgements, appendices, and reference cutoff markers as blocks.
 - Mark `Checked` only after visually comparing the block against the rendered page and confirming the matching Markdown location.
+- `MarkdownAnchor` must be an exact literal substring that exists in the final Markdown; do not rely on fuzzy or approximate matching.
+- In text-layer-assisted mode, every text-layer draft row must match a block coverage row by `Page + BlockType + MarkdownAnchor`.
 
 ## Metadata Audit Gate
 
@@ -123,25 +125,22 @@ Treat direct export review as a hard gate for figure assets.
 
 ## Image Asset Decision
 
-Prefer direct image export over cropping when it produces a complete visual match. The detailed decision checklist lives in `references/workflow.md`; keep this section as the short gate summary.
+Prefer direct image export over cropping when it produces a complete visual match. The detailed decision checklist lives in `references/workflow.md`.
 
 - Use `pdfimages` through `scripts/extract_pdf_images.ps1` to list and export candidate embedded images.
-- Reopen each exported image and compare it against the rendered PDF page.
 - Use the exported image directly when it contains the full figure as it appears in the paper.
-- Do not use a direct export if it contains only a bitmap underlay, lacks PDF-overlaid axis labels or legends, exports a transparency mask, splits a multi-panel figure into unrelated pieces, or cannot be matched to the rendered page.
-- Use precise cropping from rendered pages for tables, formulas, vector-only figures, composite figures, or incomplete direct exports only after the export gate decision is recorded for figures.
-- Direct image export is only for figure assets; it is not OCR and must not be used to extract body text.
+- Use precise cropping from rendered pages only after the export gate decision is recorded for figures.
+- Direct image export is only for figure assets; it is not OCR and must not be used to extract body text, captions, table data, or formulas.
 
 ## Screenshot Precision Gate
 
-Treat every exported or cropped image as a quality-gated artifact. An image asset is acceptable only when it passes visual review after creation.
+Treat every exported or cropped image as a quality-gated artifact. Use `references/workflow.md` for the detailed precision checklist.
 
 - Preserve all content that belongs to the figure, table, or formula block: axes, tick labels, units, legends, color bars, scale bars, panel letters, table borders, column headers, equation numbers, and inset labels.
 - Keep a small, even margin around the cropped object. Prefer a little extra whitespace over cutting off labels, curves, symbols, or borders.
 - Exclude caption text when the caption will be transcribed separately in Markdown.
-- Exclude unrelated body text, page headers, page footers, sidebars, watermarks, neighboring figures, and neighboring table rows.
-- Re-crop immediately if any edge is tight, a label is clipped, a color bar is incomplete, the image includes unrelated prose, or the crop is too small to inspect comfortably.
-- For multi-panel figures, crop the full figure when panels share legends, axes, or color bars; crop individual panels only when the paper layout and caption clearly treat them independently.
+- Exclude unrelated body text, page headers, page footers, sidebars, watermarks, and neighboring objects.
+- Reopen every created image and immediately replace, re-export, or re-crop it if visual review fails.
 
 ## Reference Cutoff Gate
 

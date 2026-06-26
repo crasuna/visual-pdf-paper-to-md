@@ -6,6 +6,8 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 
 - Render all pages to PNG, preferably 300 DPI.
 - Use 400 DPI when labels, equations, or table text are small enough that 300 DPI crops are hard to inspect.
+- Treat Poppler font warnings during rendering as non-blocking only when PNG files are created and visual inspection confirms that text, symbols, equations, and figure labels render correctly.
+- If rendered pages show missing glyphs, wrong symbols, garbled text, or visibly damaged formulas, switch rendering tools, increase DPI, or use screenshot/formula-image fallbacks before transcription.
 - Open representative pages at high detail: first page, a typical body page, a figure-heavy page, and the last page.
 - Identify page layout: one column, two column, mixed layout, footnotes, appendices, sidebars, and publisher watermarks.
 - Decide the cutoff before transcribing: for most papers this is the `References`, `REFERENCES`, or `Bibliography` heading.
@@ -45,6 +47,7 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Record one row per transcribed or intentionally omitted block: title, metadata, heading, paragraph, caption, table, formula, acknowledgement, appendix, and cutoff marker.
 - Fill `Page`, `ColumnOrRegion`, `BlockType`, `Section`, `FirstWords`, `LastWords`, `MarkdownAnchor`, `Checked`, and `Notes`.
 - Use `FirstWords` and `LastWords` as visual anchors, not summaries.
+- Use `MarkdownAnchor` as an exact literal substring that appears in the final Markdown; avoid anchors that are only conceptual labels or approximate paraphrases.
 - Mark `Checked` only after comparing the rendered page block against the final Markdown.
 - Do not treat page-level `Done` as sufficient when block rows are unchecked.
 
@@ -53,6 +56,8 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Create `scripts/new_text_layer_draft_manifest.ps1` only when embedded PDF text is used as a draft aid.
 - Record one row per draft-derived block with `Page`, `ColumnOrRegion`, `BlockType`, `Section`, `TextLayerTool`, `DraftSource`, `DraftFirstWords`, `DraftLastWords`, `VisualFirstWords`, `VisualLastWords`, `MarkdownAnchor`, `CorrectionsMade`, `VisualChecked`, and `Notes`.
 - Use `DraftFirstWords` and `DraftLastWords` to identify what the PDF text layer produced; use `VisualFirstWords` and `VisualLastWords` to prove the final block was checked against the rendered page.
+- Use `MarkdownAnchor` as the same literal Markdown substring recorded in the block coverage manifest for the corresponding row.
+- In `Text-layer-assisted` verification, every text-layer draft row must match a block coverage row by `Page + BlockType + MarkdownAnchor`.
 - Write `CorrectionsMade=none` only when visual comparison confirms the draft needed no correction.
 - Mark `VisualChecked` only after word-by-word comparison against the rendered page image.
 
@@ -119,6 +124,7 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Verify equation references in prose still point to the correct displayed formula.
 - For papers with numbered display formulas, create a formula manifest with `scripts/new_formula_manifest.ps1`; every visual formula discovery and every Markdown `\tag{...}` must be recorded.
 - Fill `SourcePage`, `SourceBlock`, `VisualNumber`, `MarkdownTag`, `MarkdownAnchor`, `DiscoveryChecked`, `TranscriptionChecked`, and `Done`.
+- Set `MarkdownAnchor` to a literal formula substring in the final Markdown, such as the exact `\tag{...}` or a distinctive LaTeX fragment.
 - If a formula is visually uncertain, include a formula crop as an asset, transcribe only the confirmed parts, and record the uncertainty in the checklist and formula manifest.
 - Do not replace formulas with explanations. Explanations can be added only if the user separately asks for them.
 
@@ -137,11 +143,13 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Use the page-level checklist to confirm every body block, caption, table, formula, appendix block, and intentional reference-list omission is accounted for.
 - Use the block coverage manifest to confirm every block row has visual anchors, a Markdown location, and a checked status.
 - In text-layer-assisted mode, use the text layer draft manifest to confirm every draft-derived block has draft anchors, visual anchors, corrections recorded, a Markdown location, and `VisualChecked`.
+- Confirm every `MarkdownAnchor` in block coverage, text layer draft, and formula manifests exists literally and exactly in the final Markdown.
+- In text-layer-assisted mode, confirm each text-layer draft row links to a block coverage row by `Page + BlockType + MarkdownAnchor`.
 - Check the metadata manifest for title, authors, journal, year, volume/issue/pages, and DOI.
 - Check the reference cutoff manifest before relying on the absence of bibliography entries.
 - Check that all image links resolve from the Markdown file location.
 - Inspect all embedded images, not only their paths. Confirm each image is the intended figure/table/formula and is not a loose page screenshot.
-- Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` with all manifests for full-paper jobs. Add `-TextLayerAssisted -TextLayerDraftManifestPath ...` when embedded PDF text was used.
+- Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` with `-ChecklistPath` and all manifests for full-paper jobs. Add `-TextLayerAssisted -TextLayerDraftManifestPath ...` when embedded PDF text was used.
 - Check the asset decision manifest. Confirm every Markdown image link is recorded as a chosen asset, every `crop-fallback` row has a reason, and every asset row is marked done after visual review.
 - Check the image candidate manifest. Confirm every direct-export candidate is chosen and every rejected candidate has a concrete reason.
 - Check the formula manifest when present. Confirm every `MarkdownTag` appears in Markdown and every Markdown `\tag{...}` is recorded.

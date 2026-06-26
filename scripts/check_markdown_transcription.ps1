@@ -223,6 +223,34 @@ function Test-AnyPathKeyInSet {
     return $false
 }
 
+function Test-MarkdownAnchorExists {
+    param(
+        [string]$Anchor,
+        [string]$MarkdownText
+    )
+
+    if (-not $Anchor) {
+        return $false
+    }
+
+    $trimmed = $Anchor.Trim()
+    if (-not $trimmed) {
+        return $false
+    }
+
+    return $MarkdownText.Contains($trimmed)
+}
+
+function New-BlockLinkKey {
+    param(
+        [string]$Page,
+        [string]$BlockType,
+        [string]$MarkdownAnchor
+    )
+
+    return (([string]$Page).Trim() + "|" + ([string]$BlockType).Trim() + "|" + ([string]$MarkdownAnchor).Trim()).ToLowerInvariant()
+}
+
 $markdownItem = Get-Item -LiteralPath $MarkdownPath
 $markdownDir = Split-Path -Parent $markdownItem.FullName
 $text = Get-Content -LiteralPath $markdownItem.FullName -Raw
@@ -430,6 +458,9 @@ if ($ChecklistPath) {
 }
 
 if ($StrictFullPaper) {
+    if (-not $ChecklistPath) {
+        $errors.Add("StrictFullPaper requires ChecklistPath.")
+    }
     if (-not $BlockManifestPath) {
         $errors.Add("StrictFullPaper requires BlockManifestPath.")
     }
@@ -452,6 +483,7 @@ if ($TextLayerAssisted -and -not $TextLayerDraftManifestPath) {
 }
 
 $blockRows = @()
+$blockLinkKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
 if ($BlockManifestPath) {
     $blockRequiredFields = @(
         "Page",
@@ -483,11 +515,17 @@ if ($BlockManifestPath) {
         if (-not ([string]$row.LastWords).Trim()) {
             $errors.Add("Block coverage row for '$blockType' has empty LastWords.")
         }
-        if (-not ([string]$row.MarkdownAnchor).Trim()) {
+        $markdownAnchor = ([string]$row.MarkdownAnchor).Trim()
+        if (-not $markdownAnchor) {
             $errors.Add("Block coverage row for '$blockType' has empty MarkdownAnchor.")
+        } elseif (-not (Test-MarkdownAnchorExists -Anchor $markdownAnchor -MarkdownText $text)) {
+            $errors.Add("Block coverage MarkdownAnchor for '$blockType' is not present in Markdown: $markdownAnchor")
         }
         if (-not (Test-DoneValue -Value ([string]$row.Checked))) {
             $errors.Add("Block coverage row for '$blockType' is not checked.")
+        }
+        if ($page -and $blockType -and $markdownAnchor) {
+            [void]$blockLinkKeys.Add((New-BlockLinkKey -Page $page -BlockType $blockType -MarkdownAnchor $markdownAnchor))
         }
     }
 }
@@ -629,14 +667,23 @@ if ($TextLayerDraftManifestPath) {
         if (-not ([string]$row.VisualLastWords).Trim()) {
             $errors.Add("Text layer draft row for '$blockType' has empty VisualLastWords.")
         }
-        if (-not ([string]$row.MarkdownAnchor).Trim()) {
+        $markdownAnchor = ([string]$row.MarkdownAnchor).Trim()
+        if (-not $markdownAnchor) {
             $errors.Add("Text layer draft row for '$blockType' has empty MarkdownAnchor.")
+        } elseif (-not (Test-MarkdownAnchorExists -Anchor $markdownAnchor -MarkdownText $text)) {
+            $errors.Add("Text layer draft MarkdownAnchor for '$blockType' is not present in Markdown: $markdownAnchor")
         }
         if (-not ([string]$row.CorrectionsMade).Trim()) {
             $errors.Add("Text layer draft row for '$blockType' has empty CorrectionsMade. Use 'none' only after visual verification finds no corrections.")
         }
         if (-not (Test-DoneValue -Value ([string]$row.VisualChecked))) {
             $errors.Add("Text layer draft row for '$blockType' is not visually checked.")
+        }
+        if ($TextLayerAssisted -and $page -and $blockType -and $markdownAnchor) {
+            $linkKey = New-BlockLinkKey -Page $page -BlockType $blockType -MarkdownAnchor $markdownAnchor
+            if (-not $blockLinkKeys.Contains($linkKey)) {
+                $errors.Add("Text layer draft row for '$blockType' does not match a block coverage row by Page + BlockType + MarkdownAnchor.")
+            }
         }
     }
 }
@@ -838,6 +885,8 @@ if ($FormulaManifestPath) {
         }
         if (-not $markdownAnchor) {
             $errors.Add("Formula manifest row for '$formula' has an empty MarkdownAnchor.")
+        } elseif (-not (Test-MarkdownAnchorExists -Anchor $markdownAnchor -MarkdownText $text)) {
+            $errors.Add("Formula manifest MarkdownAnchor for '$formula' is not present in Markdown: $markdownAnchor")
         }
         if (-not (Test-DoneValue -Value ([string]$row.DiscoveryChecked))) {
             $errors.Add("Formula manifest row for '$formula' has unchecked DiscoveryChecked.")
