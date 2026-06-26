@@ -19,7 +19,11 @@ param(
 
     [string]$ImageCandidateManifestPath,
 
+    [string]$TextLayerDraftManifestPath,
+
     [switch]$StrictFullPaper,
+
+    [switch]$TextLayerAssisted,
 
     [ValidateSet("Exclude", "Keep")]
     [string]$ReferencePolicy = "Exclude"
@@ -443,6 +447,10 @@ if ($StrictFullPaper) {
     }
 }
 
+if ($TextLayerAssisted -and -not $TextLayerDraftManifestPath) {
+    $errors.Add("TextLayerAssisted requires TextLayerDraftManifestPath.")
+}
+
 $blockRows = @()
 if ($BlockManifestPath) {
     $blockRequiredFields = @(
@@ -568,6 +576,67 @@ if ($ReferenceCutoffManifestPath) {
             if (-not (Test-DoneValue -Value ([string]$row.ExcludedAfterHeading))) {
                 $errors.Add("Reference cutoff manifest requires ExcludedAfterHeading to be checked for Exclude policy.")
             }
+        }
+    }
+}
+
+$textLayerDraftRows = @()
+if ($TextLayerDraftManifestPath) {
+    $textLayerRequiredFields = @(
+        "Page",
+        "ColumnOrRegion",
+        "BlockType",
+        "Section",
+        "TextLayerTool",
+        "DraftSource",
+        "DraftFirstWords",
+        "DraftLastWords",
+        "VisualFirstWords",
+        "VisualLastWords",
+        "MarkdownAnchor",
+        "CorrectionsMade",
+        "VisualChecked",
+        "Notes"
+    )
+    $textLayerDraftRows = @(Get-ManifestRows -Path $TextLayerDraftManifestPath -RequiredFields $textLayerRequiredFields)
+    if ($textLayerDraftRows.Count -eq 0) {
+        $errors.Add("Text layer draft manifest contains no rows.")
+    }
+    foreach ($row in $textLayerDraftRows) {
+        $blockType = ([string]$row.BlockType).Trim()
+        $page = ([string]$row.Page).Trim()
+        if (-not $page) {
+            $errors.Add("Text layer draft row has an empty Page value.")
+        }
+        if (-not $blockType) {
+            $errors.Add("Text layer draft row has an empty BlockType value.")
+        }
+        if (-not ([string]$row.TextLayerTool).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty TextLayerTool.")
+        }
+        if (-not ([string]$row.DraftSource).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty DraftSource.")
+        }
+        if (-not ([string]$row.DraftFirstWords).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty DraftFirstWords.")
+        }
+        if (-not ([string]$row.DraftLastWords).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty DraftLastWords.")
+        }
+        if (-not ([string]$row.VisualFirstWords).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty VisualFirstWords.")
+        }
+        if (-not ([string]$row.VisualLastWords).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty VisualLastWords.")
+        }
+        if (-not ([string]$row.MarkdownAnchor).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty MarkdownAnchor.")
+        }
+        if (-not ([string]$row.CorrectionsMade).Trim()) {
+            $errors.Add("Text layer draft row for '$blockType' has empty CorrectionsMade. Use 'none' only after visual verification finds no corrections.")
+        }
+        if (-not (Test-DoneValue -Value ([string]$row.VisualChecked))) {
+            $errors.Add("Text layer draft row for '$blockType' is not visually checked.")
         }
     }
 }
@@ -817,6 +886,8 @@ if ($errors.Count -gt 0) {
     MetadataManifest = $(if ($MetadataManifestPath) { (Get-Item -LiteralPath $MetadataManifestPath).FullName } else { $null })
     ReferenceCutoffManifest = $(if ($ReferenceCutoffManifestPath) { (Get-Item -LiteralPath $ReferenceCutoffManifestPath).FullName } else { $null })
     ImageCandidateManifest = $(if ($ImageCandidateManifestPath) { (Get-Item -LiteralPath $ImageCandidateManifestPath).FullName } else { $null })
+    TextLayerAssisted = [bool]$TextLayerAssisted
+    TextLayerDraftManifest = $(if ($TextLayerDraftManifestPath) { (Get-Item -LiteralPath $TextLayerDraftManifestPath).FullName } else { $null })
     FormulaManifest = $(if ($FormulaManifestPath) { (Get-Item -LiteralPath $FormulaManifestPath).FullName } else { $null })
     ImageLinks = $imageMatches.Count
     ManifestRows = $manifestRows.Count
@@ -825,6 +896,7 @@ if ($errors.Count -gt 0) {
     BlockRows = $blockRows.Count
     MetadataRows = $metadataRows.Count
     ReferenceCutoffRows = $referenceCutoffRows.Count
+    TextLayerDraftRows = $textLayerDraftRows.Count
     FormulaManifestRows = $formulaManifestRows.Count
     FormulaMentions = $formulaReports.Count
     Lines = $lines.Count

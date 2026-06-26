@@ -9,8 +9,17 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Open representative pages at high detail: first page, a typical body page, a figure-heavy page, and the last page.
 - Identify page layout: one column, two column, mixed layout, footnotes, appendices, sidebars, and publisher watermarks.
 - Decide the cutoff before transcribing: for most papers this is the `References`, `REFERENCES`, or `Bibliography` heading.
+- Choose the source mode before drafting. Use visual-only when text extraction is forbidden or unreliable; use text-layer-assisted only when the user explicitly allows embedded PDF text extraction.
 - Generate a page-level checklist with `scripts/new_transcription_checklist.ps1` and update it as each page is transcribed and reviewed.
-- For full-paper jobs, also create block coverage, metadata, reference cutoff, image candidate, asset decision, and formula manifests before final verification.
+- For full-paper jobs, also create block coverage, metadata, reference cutoff, image candidate, asset decision, and formula manifests before final verification. Create a text layer draft manifest when text-layer-assisted mode is used.
+
+## Source Modes
+
+- `Visual-only`: Rendered page images are the only text source. Do not use OCR, embedded PDF text extraction, selectable text copy/paste, or external recognition services.
+- `Text-layer-assisted`: Embedded PDF text may be extracted with tools such as `pdftotext`, `pdfplumber`, or `pypdf` only to create a rough draft. The rendered page image remains the authority for every final word, symbol, citation, table value, caption, formula, and cutoff decision.
+- In text-layer-assisted mode, record every draft-derived block in `scripts/new_text_layer_draft_manifest.ps1` with draft anchors, visual anchors, Markdown anchor, corrections, and visual checked status.
+- Do not automatically trust the text layer quality. Record missing spaces, wrong reading order, bad ligatures, dropped symbols, or other low-quality draft behavior in `CorrectionsMade` and `Notes`.
+- Do not use OCR or external recognition services in either mode.
 
 ## Markdown Style Contract
 
@@ -38,6 +47,14 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Use `FirstWords` and `LastWords` as visual anchors, not summaries.
 - Mark `Checked` only after comparing the rendered page block against the final Markdown.
 - Do not treat page-level `Done` as sufficient when block rows are unchecked.
+
+## Text Layer Draft Manifest
+
+- Create `scripts/new_text_layer_draft_manifest.ps1` only when embedded PDF text is used as a draft aid.
+- Record one row per draft-derived block with `Page`, `ColumnOrRegion`, `BlockType`, `Section`, `TextLayerTool`, `DraftSource`, `DraftFirstWords`, `DraftLastWords`, `VisualFirstWords`, `VisualLastWords`, `MarkdownAnchor`, `CorrectionsMade`, `VisualChecked`, and `Notes`.
+- Use `DraftFirstWords` and `DraftLastWords` to identify what the PDF text layer produced; use `VisualFirstWords` and `VisualLastWords` to prove the final block was checked against the rendered page.
+- Write `CorrectionsMade=none` only when visual comparison confirms the draft needed no correction.
+- Mark `VisualChecked` only after word-by-word comparison against the rendered page image.
 
 ## Metadata Manifest
 
@@ -85,6 +102,7 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 ## Transcription
 
 - Transcribe the body content completely: no summaries, paraphrases, translations, omitted sentences, or silent simplification.
+- In text-layer-assisted mode, treat extracted text as a draft to correct, not as evidence. Fix reading order, missing spaces, hyphenation, ligatures, mathematical symbols, superscripts/subscripts, units, and punctuation from the rendered page image.
 - Preserve title, authors, venue/date metadata, abstract labels, headings, subheadings, body paragraphs, acknowledgements, appendices, captions, tables, and equations.
 - Preserve body citation markers exactly: `(1)`, `(2,3)`, `(10-12)`, `(28,29)`, `[A1]`, `Eq. [1]`.
 - Preserve punctuation, capitalization, symbols, abbreviations, units, and original wording even when the source phrasing is awkward.
@@ -118,11 +136,12 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Compare the Markdown against rendered pages by page, column, and paragraph.
 - Use the page-level checklist to confirm every body block, caption, table, formula, appendix block, and intentional reference-list omission is accounted for.
 - Use the block coverage manifest to confirm every block row has visual anchors, a Markdown location, and a checked status.
+- In text-layer-assisted mode, use the text layer draft manifest to confirm every draft-derived block has draft anchors, visual anchors, corrections recorded, a Markdown location, and `VisualChecked`.
 - Check the metadata manifest for title, authors, journal, year, volume/issue/pages, and DOI.
 - Check the reference cutoff manifest before relying on the absence of bibliography entries.
 - Check that all image links resolve from the Markdown file location.
 - Inspect all embedded images, not only their paths. Confirm each image is the intended figure/table/formula and is not a loose page screenshot.
-- Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` with all manifests for full-paper jobs.
+- Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` with all manifests for full-paper jobs. Add `-TextLayerAssisted -TextLayerDraftManifestPath ...` when embedded PDF text was used.
 - Check the asset decision manifest. Confirm every Markdown image link is recorded as a chosen asset, every `crop-fallback` row has a reason, and every asset row is marked done after visual review.
 - Check the image candidate manifest. Confirm every direct-export candidate is chosen and every rejected candidate has a concrete reason.
 - Check the formula manifest when present. Confirm every `MarkdownTag` appears in Markdown and every Markdown `\tag{...}` is recorded.
@@ -136,7 +155,8 @@ Use this structure after a full-paper transcription:
 
 - Markdown: `<path>`
 - Assets: `<path>`
-- Manifests: checklist, block coverage, metadata, reference cutoff, image candidates, asset decisions, formulas
+- Manifests: checklist, block coverage, metadata, reference cutoff, image candidates, asset decisions, formulas, and text layer draft manifest when used
+- Source mode: `Visual-only` or `Text-layer-assisted`
 - Reference policy: `Exclude` or `Keep`, with cutoff summary when excluded
 - Validation: commands run and pass/fail outcome
 - Uncertainties: list unresolved visual transcription points, or state that no visually uncertain transcription points remain
