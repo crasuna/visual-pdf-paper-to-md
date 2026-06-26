@@ -241,6 +241,35 @@ function Test-MarkdownAnchorExists {
     return $MarkdownText.Contains($trimmed)
 }
 
+function Get-MarkdownAnchorIndex {
+    param(
+        [string]$Anchor,
+        [string]$MarkdownText
+    )
+
+    if (-not $Anchor) {
+        return -1
+    }
+
+    $trimmed = $Anchor.Trim()
+    if (-not $trimmed) {
+        return -1
+    }
+
+    return $MarkdownText.IndexOf($trimmed, [System.StringComparison]::Ordinal)
+}
+
+function Test-NAValue {
+    param([string]$Value)
+
+    if (-not $Value) {
+        return $false
+    }
+
+    $normalized = $Value.Trim().ToLowerInvariant()
+    return @("n/a", "na", "not available", "absent") -contains $normalized
+}
+
 function New-BlockLinkKey {
     param(
         [string]$Page,
@@ -249,6 +278,46 @@ function New-BlockLinkKey {
     )
 
     return (([string]$Page).Trim() + "|" + ([string]$BlockType).Trim() + "|" + ([string]$MarkdownAnchor).Trim()).ToLowerInvariant()
+}
+
+function Find-ImageReportForPathValue {
+    param(
+        [object[]]$ImageReports,
+        [string]$Value,
+        [string]$ManifestDir,
+        [string]$MarkdownDir
+    )
+
+    foreach ($part in (Split-ListValues -Value $Value)) {
+        $candidate = $part.Trim().Trim([char[]]@("<", ">", '"', "'"))
+        if (-not $candidate) {
+            continue
+        }
+
+        $candidatePath = $candidate -replace '/', '\'
+        $candidateLeaf = [System.IO.Path]::GetFileName($candidate)
+        $expanded = [Environment]::ExpandEnvironmentVariables($candidate)
+        $candidateFullPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+        if ([System.IO.Path]::IsPathRooted($expanded)) {
+            [void]$candidateFullPaths.Add([System.IO.Path]::GetFullPath($expanded))
+        } else {
+            [void]$candidateFullPaths.Add([System.IO.Path]::GetFullPath((Join-Path $ManifestDir $expanded)))
+            [void]$candidateFullPaths.Add([System.IO.Path]::GetFullPath((Join-Path $MarkdownDir $expanded)))
+        }
+
+        foreach ($image in $ImageReports) {
+            $imageTarget = ([string]$image.Target) -replace '/', '\'
+            $imageLeaf = [string]$image.Leaf
+            $imageFullName = [string]$image.FullName
+            if ($imageTarget -eq $candidatePath -or
+                $imageLeaf -eq $candidateLeaf -or
+                $candidateFullPaths.Contains($imageFullName)) {
+                return $image
+            }
+        }
+    }
+
+    return $null
 }
 
 $markdownItem = Get-Item -LiteralPath $MarkdownPath
@@ -324,6 +393,7 @@ foreach ($match in $imageMatches) {
         FullName = $assetFullName
         Leaf = $leaf
         FigureNumber = $figureNumber
+        Index = $match.Index
     }
     $localImageReports.Add($imageInfo)
     if ($figureNumber -or $alt -match '(?i)\bfig(?:ure)?\b' -or $leaf -match '(?i)^fig') {
@@ -566,6 +636,15 @@ if ($MetadataManifestPath) {
         }
         if (-not ([string]$row.MarkdownValue).Trim()) {
             $errors.Add("Metadata manifest row for '$field' has empty MarkdownValue.")
+        } else {
+            $markdownValue = ([string]$row.MarkdownValue).Trim()
+            if (Test-NAValue -Value $markdownValue) {
+                if (-not ([string]$row.Notes).Trim()) {
+                    $errors.Add("Metadata manifest row for '$field' uses N/A but has empty Notes.")
+                }
+            } elseif (-not (Test-MarkdownAnchorExists -Anchor $markdownValue -MarkdownText $text)) {
+                $errors.Add("Metadata manifest MarkdownValue for '$field' is not present in Markdown: $markdownValue")
+            }
         }
         if (-not (Test-DoneValue -Value ([string]$row.Checked))) {
             $errors.Add("Metadata manifest row for '$field' is not checked.")
@@ -812,8 +891,21 @@ if ($AssetManifestPath) {
             $errors.Add("Asset manifest row for '$figure' is not marked Done.")
         }
         if ($StrictFullPaper) {
-            if (-not ([string]$row.FirstCitationAnchor).Trim()) {
+            $firstCitationAnchor = ([string]$row.FirstCitationAnchor).Trim()
+            if (-not $firstCitationAnchor) {
                 $errors.Add("Asset manifest row for '$figure' has empty FirstCitationAnchor.")
+            } else {
+                $anchorIndex = Get-MarkdownAnchorIndex -Anchor $firstCitationAnchor -MarkdownText $text
+                if ($anchorIndex -lt 0) {
+                    $errors.Add("Asset manifest FirstCitationAnchor for '$figure' is not present in Markdown: $firstCitationAnchor")
+                }
+
+                $chosenImage = Find-ImageReportForPathValue -ImageReports $localImageReports.ToArray() -Value $chosenAsset -ManifestDir $manifestDir -MarkdownDir $markdownDir
+                if (-not $chosenImage) {
+                    $errors.Add("Asset manifest ChosenAsset for '$figure' does not match any Markdown image link: $chosenAsset")
+                } elseif ($anchorIndex -ge 0 -and ([int]$chosenImage.Index) -le $anchorIndex) {
+                    $errors.Add("Asset manifest row for '$figure' places image before FirstCitationAnchor. ChosenAsset '$chosenAsset' must appear after anchor: $firstCitationAnchor")
+                }
             }
             if (([string]$row.PlacementBasis).Trim() -ne "first-citation") {
                 $errors.Add("Asset manifest row for '$figure' must use PlacementBasis=first-citation.")

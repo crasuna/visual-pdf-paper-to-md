@@ -93,7 +93,7 @@ Record paper metadata separately so repeated transcriptions do not drift.
 - Create a metadata manifest for `Title`, `Authors`, `Journal`, `Year`, `VolumeIssuePages`, and `DOI`.
 - Read metadata only from rendered page images unless the user allows another source.
 - Use `N/A` only when a metadata field is visually absent from the paper, and explain it in `Notes`.
-- Mark `Checked` only after the Markdown value matches the visually read value.
+- Mark `Checked` only after the Markdown value matches the visually read value; strict checks require each non-`N/A` `MarkdownValue` to appear literally in the final Markdown.
 
 ## Formula Fidelity Gate
 
@@ -119,7 +119,7 @@ Treat direct export review as a hard gate for figure assets.
 - Record every exported candidate in the image candidate manifest. Use `Decision=chosen`, `rejected`, or `unmatched`; every rejected candidate needs a concrete `RejectReason`.
 - Use `crop-fallback` only after writing a concrete reason: no export candidate, incomplete export, missing axes/labels/legends/color bars/panel markers, split image objects, transparency mask, unreadable quality, or cannot match the rendered page.
 - Use only these asset manifest values: `Method` is `direct-export` or `crop-fallback`; `VisualMatch` is `complete`, `incomplete`, or `not-matched`.
-- Record `FirstCitationAnchor`, `PlacementBasis=first-citation`, and checked placement for every final figure asset.
+- Record `FirstCitationAnchor`, `PlacementBasis=first-citation`, and checked placement for every final figure asset. Use a unique snippet from the first body citation, not caption text.
 - If a complete direct export is found after a crop was made, replace the crop with the direct export and update the manifest.
 - Direct image export is only for figure assets; it is not OCR and must not be used to extract body text, captions, table data, or formulas.
 
@@ -128,8 +128,8 @@ Treat direct export review as a hard gate for figure assets.
 Prefer direct image export over cropping when it produces a complete visual match. The detailed decision checklist lives in `references/workflow.md`.
 
 - Use `pdfimages` through `scripts/extract_pdf_images.ps1` to list and export candidate embedded images.
-- Use the exported image directly when it contains the full figure as it appears in the paper.
-- Use precise cropping from rendered pages only after the export gate decision is recorded for figures.
+- Use the exported image directly only when it contains the full figure as it appears in the paper.
+- Use cropping only after the export gate decision is recorded for figures.
 - Direct image export is only for figure assets; it is not OCR and must not be used to extract body text, captions, table data, or formulas.
 
 ## Screenshot Precision Gate
@@ -137,9 +137,7 @@ Prefer direct image export over cropping when it produces a complete visual matc
 Treat every exported or cropped image as a quality-gated artifact. Use `references/workflow.md` for the detailed precision checklist.
 
 - Preserve all content that belongs to the figure, table, or formula block: axes, tick labels, units, legends, color bars, scale bars, panel letters, table borders, column headers, equation numbers, and inset labels.
-- Keep a small, even margin around the cropped object. Prefer a little extra whitespace over cutting off labels, curves, symbols, or borders.
 - Exclude caption text when the caption will be transcribed separately in Markdown.
-- Exclude unrelated body text, page headers, page footers, sidebars, watermarks, and neighboring objects.
 - Reopen every created image and immediately replace, re-export, or re-crop it if visual review fails.
 
 ## Reference Cutoff Gate

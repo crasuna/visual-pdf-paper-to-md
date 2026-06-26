@@ -67,6 +67,7 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Read values from rendered page images. Do not repair metadata from external knowledge unless the user explicitly allows it.
 - Use `N/A` only when a field is visually absent and explain that in `Notes`.
 - Mark `Checked` only when the Markdown metadata matches the visually read value.
+- In strict checks, every non-`N/A` `MarkdownValue` must appear literally in the final Markdown. If `MarkdownValue` is `N/A`, `Notes` must explain why the field is visually absent.
 
 ## Image Asset Decision
 
@@ -89,6 +90,8 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Ensure every final Markdown figure link appears as a `ChosenAsset` in the asset decision manifest.
 - Ensure direct-export rows have at least one `ExportCandidates` entry marked `Decision=chosen` in the image candidate manifest.
 - Fill `FirstCitationAnchor`, set `PlacementBasis=first-citation`, and mark `PlacementChecked` after confirming the Markdown figure is placed after its first citation.
+- Use a short, unique `FirstCitationAnchor` from the first body citation sentence, such as a phrase containing `Fig. 1`; do not use caption text such as `**Fig. 1.**`.
+- In strict checks, `FirstCitationAnchor` must appear literally in the final Markdown, `ChosenAsset` must match a Markdown image link, and the image link must appear after that anchor.
 - When cropping a fallback figure, call `scripts/crop_pdf_region.ps1` with `-AssetManifestPath`, `-Figure`, and `-RequireManifestDecision`.
 - Use direct exports only for images. Continue visual transcription for text, captions, formulas, and table data.
 
@@ -151,6 +154,7 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Inspect all embedded images, not only their paths. Confirm each image is the intended figure/table/formula and is not a loose page screenshot.
 - Run `scripts/check_markdown_transcription.ps1 -StrictFullPaper` with `-ChecklistPath` and all manifests for full-paper jobs. Add `-TextLayerAssisted -TextLayerDraftManifestPath ...` when embedded PDF text was used.
 - Check the asset decision manifest. Confirm every Markdown image link is recorded as a chosen asset, every `crop-fallback` row has a reason, and every asset row is marked done after visual review.
+- Confirm each asset decision row links `FirstCitationAnchor` to a real Markdown image placement after the first citation.
 - Check the image candidate manifest. Confirm every direct-export candidate is chosen and every rejected candidate has a concrete reason.
 - Check the formula manifest when present. Confirm every `MarkdownTag` appears in Markdown and every Markdown `\tag{...}` is recorded.
 - Search for accidental bibliography headings or numbered reference entries.
