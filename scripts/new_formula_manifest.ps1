@@ -3,11 +3,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
-    [int]$FigureCount = 0,
+    [int]$FormulaCount = 0,
 
-    [string[]]$Figures,
+    [string[]]$Formulas,
 
-    [string[]]$RenderedPages,
+    [string[]]$Pages,
 
     [ValidateSet("csv", "md")]
     [string]$Format,
@@ -18,13 +18,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $fields = @(
-    "Figure",
-    "RenderedPage",
-    "ExportCandidates",
-    "ChosenAsset",
-    "Method",
-    "VisualMatch",
-    "FallbackReason",
+    "Formula",
+    "Page",
+    "MarkdownTag",
+    "ScreenshotAsset",
+    "Uncertainty",
     "ReviewerNotes",
     "Done"
 )
@@ -42,15 +40,15 @@ if ((Test-Path -LiteralPath $OutputPath) -and -not $Force) {
     throw "OutputPath already exists. Use -Force to overwrite: $OutputPath"
 }
 
-if (-not $Figures -or $Figures.Count -eq 0) {
-    if ($FigureCount -lt 1) {
-        throw "Provide -FigureCount or -Figures."
+if (-not $Formulas -or $Formulas.Count -eq 0) {
+    if ($FormulaCount -lt 1) {
+        throw "Provide -FormulaCount or -Formulas."
     }
-    $Figures = 1..$FigureCount | ForEach-Object { "Figure $_" }
+    $Formulas = 1..$FormulaCount | ForEach-Object { "Formula $_" }
 }
 
-if ($RenderedPages -and $RenderedPages.Count -ne $Figures.Count) {
-    throw "RenderedPages count must match Figures count."
+if ($Pages -and $Pages.Count -ne $Formulas.Count) {
+    throw "Pages count must match Formulas count."
 }
 
 $outputParent = Split-Path -Parent $OutputPath
@@ -59,20 +57,18 @@ if ($outputParent) {
 }
 
 $rows = New-Object System.Collections.Generic.List[object]
-for ($index = 0; $index -lt $Figures.Count; $index++) {
-    $renderedPage = ""
-    if ($RenderedPages) {
-        $renderedPage = $RenderedPages[$index]
+for ($index = 0; $index -lt $Formulas.Count; $index++) {
+    $page = ""
+    if ($Pages) {
+        $page = $Pages[$index]
     }
 
     $rows.Add([pscustomobject][ordered]@{
-        Figure = $Figures[$index]
-        RenderedPage = $renderedPage
-        ExportCandidates = ""
-        ChosenAsset = ""
-        Method = ""
-        VisualMatch = ""
-        FallbackReason = ""
+        Formula = $Formulas[$index]
+        Page = $page
+        MarkdownTag = ""
+        ScreenshotAsset = ""
+        Uncertainty = ""
         ReviewerNotes = ""
         Done = ""
     })
@@ -82,9 +78,9 @@ if ($Format -eq "csv") {
     $rows | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
 } else {
     $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add("# Asset Decision Manifest")
+    $lines.Add("# Formula Fidelity Manifest")
     $lines.Add("")
-    $lines.Add('Allowed `Method` values: `direct-export`, `crop-fallback`. Allowed `VisualMatch` values: `complete`, `incomplete`, `not-matched`.')
+    $lines.Add('Use `MarkdownTag` values exactly as they appear inside `\tag{...}`.')
     $lines.Add("")
     $lines.Add("| $($fields -join ' | ') |")
     $lines.Add("| $((1..$fields.Count | ForEach-Object { '---' }) -join ' | ') |")
@@ -100,7 +96,7 @@ if ($Format -eq "csv") {
 [pscustomobject]@{
     Manifest = (Get-Item -LiteralPath $OutputPath).FullName
     Format = $Format
-    Figures = $rows.Count
+    Formulas = $rows.Count
     Fields = ($fields -join ",")
     Status = "OK"
 }

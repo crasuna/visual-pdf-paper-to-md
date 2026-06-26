@@ -35,7 +35,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "pdftoppm failed with exit code $LASTEXITCODE."
 }
 
-$pages = Get-ChildItem -LiteralPath $outputPath -Filter "$Prefix-*.png" | Sort-Object Name
+$pages = Get-ChildItem -LiteralPath $outputPath -Filter "$Prefix-*.png" | Sort-Object `
+    @{ Expression = { if ($_.BaseName -match '(\d+)$') { [int]$Matches[1] } else { [int]::MaxValue } } }, `
+    Name
 if ($pages.Count -eq 0) {
     throw "No rendered PNG pages were created in $outputPath."
 }

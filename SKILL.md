@@ -29,12 +29,12 @@ Use tools only to support the visual workflow:
 5. Create a page-level checklist with `scripts/new_transcription_checklist.ps1` and use it to track reading order, body blocks, formulas, figures/tables, uncertainties, and completion.
 6. For figures, first run `scripts/extract_pdf_images.ps1 -ListOnly`, then export candidate embedded images with `scripts/extract_pdf_images.ps1`.
 7. Create an asset decision manifest with `scripts/new_asset_decision_manifest.ps1`. Map every figure to exported candidates, choose `direct-export` when the export is visually complete, or record `crop-fallback` with a concrete fallback reason before any figure crop.
-8. Fall back to `scripts/crop_pdf_region.ps1` only for figures with a recorded `crop-fallback` decision, and for tables, formulas, vector-only figures, or any directly exported image that is missing labels, legends, color bars, panel markers, or other PDF-overlaid content.
+8. Fall back to `scripts/crop_pdf_region.ps1` only for figures with a recorded `crop-fallback` decision; pass `-AssetManifestPath`, `-Figure`, and `-RequireManifestDecision` for figure crops.
 9. Write Markdown by visual transcription with complete body fidelity. Preserve all body text, punctuation, casing, symbols, citations such as `(1)`, `(2,3)`, `(10-12)`, and equation references such as `Eq. [1]`.
-10. Convert formulas to Markdown/LaTeX when reliable; for complex or uncertain formulas, include the best verified LaTeX plus a formula crop and record the uncertainty.
+10. Convert formulas to Markdown/LaTeX when reliable; for complex or uncertain formulas, include the best verified LaTeX plus a formula crop and record formulas in a manifest from `scripts/new_formula_manifest.ps1`.
 11. Exclude the reference list when requested. Keep citations in the body; remove the `REFERENCES` heading and bibliography entries.
 12. Embed only verified direct exports or verified crops with relative Markdown image links.
-13. Run `scripts/check_markdown_transcription.ps1` on the final Markdown, passing `-AssetManifestPath` when a figure asset manifest exists.
+13. Run `scripts/check_markdown_transcription.ps1` on the final Markdown with `-RequireAssetManifest`, `-ChecklistPath`, `-AssetManifestPath`, and `-FormulaManifestPath` when those artifacts are part of the job. Use `-ReferencePolicy Keep` only when the user explicitly asks to keep the reference list.
 
 ## Text Fidelity Gate
 
@@ -57,6 +57,7 @@ Use Markdown/LaTeX as the primary representation for formulas, with image crops 
 - Keep equation references in prose, such as `Eq. [1]`, exactly as they appear.
 - For aligned equations, multi-line derivations, or piecewise definitions, use LaTeX environments such as `aligned` or `cases` when they are reliable in Markdown.
 - For formulas that cannot be confidently transcribed, write the confirmed LaTeX portion, include a cropped formula image, and record the uncertainty in the page checklist and final response.
+- For papers with numbered display formulas, create a formula manifest and keep `MarkdownTag` values aligned with every Markdown `\tag{...}`.
 - Never replace an equation with only prose unless the user explicitly asks for explanation rather than transcription.
 
 ## Image Export Gate
@@ -66,14 +67,15 @@ Treat direct export review as a hard gate for figure assets.
 - Do not crop a figure before listing embedded image objects, exporting candidate images, visually comparing candidates against the rendered page, and recording the decision in the asset manifest.
 - Rendering a page for text/layout review does not satisfy the export gate; rendered pages are comparison material, not permission to crop.
 - For each figure, record the rendered page, export candidates, chosen asset, method, visual match conclusion, fallback reason when applicable, reviewer notes, and done status.
-- Use `direct-export` when the exported image fully matches the paper figure.
+- Use `direct-export` when the exported image fully matches the paper figure; record `VisualMatch` as `complete` and list the export candidate file.
 - Use `crop-fallback` only after writing a concrete reason: no export candidate, incomplete export, missing axes/labels/legends/color bars/panel markers, split image objects, transparency mask, unreadable quality, or cannot match the rendered page.
+- Use only these asset manifest values: `Method` is `direct-export` or `crop-fallback`; `VisualMatch` is `complete`, `incomplete`, or `not-matched`.
 - If a complete direct export is found after a crop was made, replace the crop with the direct export and update the manifest.
 - Direct image export is only for figure assets; it is not OCR and must not be used to extract body text, captions, table data, or formulas.
 
 ## Image Asset Decision
 
-Prefer direct image export over cropping when it produces a complete visual match.
+Prefer direct image export over cropping when it produces a complete visual match. The detailed decision checklist lives in `references/workflow.md`; keep this section as the short gate summary.
 
 - Use `pdfimages` through `scripts/extract_pdf_images.ps1` to list and export candidate embedded images.
 - Reopen each exported image and compare it against the rendered PDF page.
@@ -111,10 +113,11 @@ Use these scripts from the skill directory:
 .\scripts\render_pdf_pages.ps1 -InputPdf "paper.pdf" -OutputDir "$env:TEMP\paper-pages" -Dpi 300 -Clean
 .\scripts\new_transcription_checklist.ps1 -InputPdf "paper.pdf" -OutputPath ".\paper_checklist.md" -RenderedImageDir "$env:TEMP\paper-pages"
 .\scripts\extract_pdf_images.ps1 -InputPdf "paper.pdf" -OutputDir ".\paper_assets\extracted" -ListOnly
-.\scripts\extract_pdf_images.ps1 -InputPdf "paper.pdf" -OutputDir ".\paper_assets\extracted" -Clean
+.\scripts\extract_pdf_images.ps1 -InputPdf "paper.pdf" -OutputDir ".\paper_assets\extracted" -Clean -AllowNone
 .\scripts\new_asset_decision_manifest.ps1 -OutputPath ".\paper_assets\asset_decision_manifest.csv" -FigureCount 4 -Force
-.\scripts\crop_pdf_region.ps1 -InputImage "$env:TEMP\paper-pages\page-1.png" -OutputImage ".\paper_assets\fig1.png" -Geometry "1200x700+300+450" -MinWidth 600 -MinHeight 300
-.\scripts\check_markdown_transcription.ps1 -MarkdownPath ".\paper.md" -AssetManifestPath ".\paper_assets\asset_decision_manifest.csv"
+.\scripts\new_formula_manifest.ps1 -OutputPath ".\paper_assets\formula_manifest.csv" -FormulaCount 4 -Force
+.\scripts\crop_pdf_region.ps1 -InputImage "$env:TEMP\paper-pages\page-1.png" -OutputImage ".\paper_assets\fig1.png" -Geometry "1200x700+300+450" -MinWidth 600 -MinHeight 300 -AssetManifestPath ".\paper_assets\asset_decision_manifest.csv" -Figure "Figure 1" -RequireManifestDecision
+.\scripts\check_markdown_transcription.ps1 -MarkdownPath ".\paper.md" -ChecklistPath ".\paper_checklist.md" -AssetManifestPath ".\paper_assets\asset_decision_manifest.csv" -FormulaManifestPath ".\paper_assets\formula_manifest.csv" -RequireAssetManifest -ReferencePolicy Exclude
 ```
 
 The scripts do not transcribe text. They only prepare image assets and check final-file integrity.

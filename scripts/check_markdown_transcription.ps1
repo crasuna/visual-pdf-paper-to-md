@@ -3,7 +3,16 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$MarkdownPath,
 
-    [string]$AssetManifestPath
+    [string]$AssetManifestPath,
+
+    [switch]$RequireAssetManifest,
+
+    [string]$ChecklistPath,
+
+    [string]$FormulaManifestPath,
+
+    [ValidateSet("Exclude", "Keep")]
+    [string]$ReferencePolicy = "Exclude"
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,7 +40,7 @@ function Split-MarkdownTableRow {
     return @($inner -split "\|" | ForEach-Object { $_.Trim() })
 }
 
-function Get-AssetManifestRows {
+function Get-ManifestRows {
     param(
         [string]$Path,
         [string[]]$RequiredFields
@@ -45,7 +54,7 @@ function Get-AssetManifestRows {
     }
 
     if ($extension -ne ".md" -and $extension -ne ".markdown") {
-        throw "Asset manifest must be .csv or .md: $Path"
+        throw "Manifest must be .csv or .md: $Path"
     }
 
     $manifestLines = Get-Content -LiteralPath $manifestItem.FullName
@@ -66,7 +75,7 @@ function Get-AssetManifestRows {
     }
 
     if ($headerIndex -lt 0) {
-        throw "Unable to find asset manifest table header."
+        throw "Unable to find manifest table header."
     }
 
     $rows = New-Object System.Collections.Generic.List[object]
@@ -135,6 +144,44 @@ function Add-PathKeys {
     }
 }
 
+function Test-PathCandidateExists {
+    param(
+        [string]$Value,
+        [string]$ManifestDir,
+        [string]$MarkdownDir
+    )
+
+    if (-not $Value) {
+        return $false
+    }
+
+    $clean = $Value.Trim().Trim([char[]]@("<", ">", '"', "'"))
+    if (-not $clean) {
+        return $false
+    }
+
+    $expanded = [Environment]::ExpandEnvironmentVariables($clean)
+    if ([System.IO.Path]::IsPathRooted($expanded)) {
+        return (Test-Path -LiteralPath $expanded)
+    }
+
+    return (
+        (Test-Path -LiteralPath (Join-Path $ManifestDir $expanded)) -or
+        (Test-Path -LiteralPath (Join-Path $MarkdownDir $expanded))
+    )
+}
+
+function Test-UncertaintyValue {
+    param([string]$Value)
+
+    if (-not $Value) {
+        return $false
+    }
+
+    $normalized = $Value.Trim().ToLowerInvariant()
+    return @("0", "false", "no", "none", "n", "resolved", "clear") -notcontains $normalized
+}
+
 $markdownItem = Get-Item -LiteralPath $MarkdownPath
 $markdownDir = Split-Path -Parent $markdownItem.FullName
 $text = Get-Content -LiteralPath $markdownItem.FullName -Raw
@@ -150,28 +197,31 @@ if ($unresolvedMatches.Count -gt 0) {
     $errors.Add("Markdown contains unresolved markers: $($samples -join ', ')")
 }
 
-if ($text -match '(?im)^\s*#{1,6}\s+(references|bibliography)\b') {
-    $errors.Add("Markdown contains a References/Bibliography heading.")
-}
+if ($ReferencePolicy -eq "Exclude") {
+    if ($text -match '(?im)^\s*#{1,6}\s+(references|bibliography)\b') {
+        $errors.Add("Markdown contains a References/Bibliography heading.")
+    }
 
-$bibliographyLike = @()
-foreach ($line in $lines) {
-    if ($line -match '^\s*\d+\.\s+.{20,}(19|20)\d{2}\b' -or
-        $line -match '^\s*\d+\.\s+.{20,}\b(J|Journal|Radiology|Magn Reson|Science|Proceedings|Press)\b') {
-        $bibliographyLike += $line
+    $bibliographyLike = @()
+    foreach ($line in $lines) {
+        if ($line -match '^\s*\d+\.\s+.{20,}(19|20)\d{2}\b' -or
+            $line -match '^\s*\d+\.\s+.{20,}\b(J|Journal|Radiology|Magn Reson|Science|Proceedings|Press)\b') {
+            $bibliographyLike += $line
+        }
+    }
+    if ($bibliographyLike.Count -ge 3) {
+        $errors.Add("Markdown appears to contain numbered bibliography entries.")
     }
 }
-if ($bibliographyLike.Count -ge 3) {
-    $errors.Add("Markdown appears to contain numbered bibliography entries.")
-}
 
-$imageMatches = [regex]::Matches($text, '!\[[^\]]*\]\(([^)]+)\)')
+$imagePattern = '!\[[^\]]*\]\(\s*(?<target><[^>]+>|"[^"]+"|''[^'']+''|[^\s\)]+)(?:\s+["''][^)]*["''])?\s*\)'
+$imageMatches = [regex]::Matches($text, $imagePattern)
 $missingImages = New-Object System.Collections.Generic.List[string]
 $imageReports = New-Object System.Collections.Generic.List[object]
 $localImageReports = New-Object System.Collections.Generic.List[object]
 $magick = (Get-Command magick -ErrorAction SilentlyContinue).Source
 foreach ($match in $imageMatches) {
-    $target = $match.Groups[1].Value.Trim()
+    $target = $match.Groups["target"].Value.Trim()
     $target = $target.Trim([char[]]@('<', '>', '"', "'"))
     if ($target -match '^(https?|data):') {
         $imageReports.Add([pscustomobject]@{
@@ -245,7 +295,9 @@ if ($missingImages.Count -gt 0) {
 }
 
 $formulaReports = New-Object System.Collections.Generic.List[object]
+$markdownTagSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($match in [regex]::Matches($text, '\\tag\{([^}]+)\}')) {
+    [void]$markdownTagSet.Add($match.Groups[1].Value)
     $formulaReports.Add([pscustomobject]@{
         Kind = "EquationTag"
         Value = $match.Groups[1].Value
@@ -267,7 +319,49 @@ foreach ($match in [regex]::Matches($text, '\[(A\d+)\]')) {
     })
 }
 
+$checklistRows = @()
+if ($ChecklistPath) {
+    $checklistRequiredFields = @(
+        "Page",
+        "Rendered image",
+        "Reading order blocks",
+        "Body paragraphs checked",
+        "Formulas checked",
+        "Figures/tables checked",
+        "Uncertainties",
+        "Done"
+    )
+    $checklistRows = @(Get-ManifestRows -Path $ChecklistPath -RequiredFields $checklistRequiredFields)
+    if ($checklistRows.Count -eq 0) {
+        $errors.Add("Checklist contains no page rows.")
+    }
+
+    foreach ($row in $checklistRows) {
+        $page = ([string]$row.Page).Trim()
+        if (-not $page) {
+            $errors.Add("Checklist row has an empty Page value.")
+            continue
+        }
+        if (-not (Test-DoneValue -Value ([string]$row.'Body paragraphs checked'))) {
+            $errors.Add("Checklist page '$page' has unchecked Body paragraphs checked.")
+        }
+        if (-not (Test-DoneValue -Value ([string]$row.'Formulas checked'))) {
+            $errors.Add("Checklist page '$page' has unchecked Formulas checked.")
+        }
+        if (-not (Test-DoneValue -Value ([string]$row.'Figures/tables checked'))) {
+            $errors.Add("Checklist page '$page' has unchecked Figures/tables checked.")
+        }
+        if (-not (Test-DoneValue -Value ([string]$row.Done))) {
+            $errors.Add("Checklist page '$page' is not marked Done.")
+        }
+    }
+}
+
 $manifestRows = @()
+if ($RequireAssetManifest -and $localImageReports.Count -gt 0 -and -not $AssetManifestPath) {
+    $errors.Add("AssetManifestPath is required because RequireAssetManifest is set and Markdown contains local image links.")
+}
+
 if ($AssetManifestPath) {
     $manifestItem = Get-Item -LiteralPath $AssetManifestPath
     $manifestDir = Split-Path -Parent $manifestItem.FullName
@@ -282,13 +376,14 @@ if ($AssetManifestPath) {
         "ReviewerNotes",
         "Done"
     )
-    $manifestRows = @(Get-AssetManifestRows -Path $manifestItem.FullName -RequiredFields $requiredFields)
+    $manifestRows = @(Get-ManifestRows -Path $manifestItem.FullName -RequiredFields $requiredFields)
     if ($manifestRows.Count -eq 0) {
         $errors.Add("Asset manifest contains no asset decision rows.")
     }
 
     $chosenKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     $allowedMethods = @("direct-export", "crop-fallback")
+    $allowedVisualMatches = @("complete", "incomplete", "not-matched")
     foreach ($row in $manifestRows) {
         foreach ($field in $requiredFields) {
             if (-not ($row.PSObject.Properties.Name -contains $field)) {
@@ -298,8 +393,9 @@ if ($AssetManifestPath) {
 
         $figure = [string]$row.Figure
         $method = ([string]$row.Method).Trim()
+        $exportCandidates = ([string]$row.ExportCandidates).Trim()
         $chosenAsset = ([string]$row.ChosenAsset).Trim()
-        $visualMatch = ([string]$row.VisualMatch).Trim()
+        $visualMatch = ([string]$row.VisualMatch).Trim().ToLowerInvariant()
         $fallbackReason = ([string]$row.FallbackReason).Trim()
         $done = ([string]$row.Done).Trim()
 
@@ -309,11 +405,22 @@ if ($AssetManifestPath) {
         if ($allowedMethods -notcontains $method) {
             $errors.Add("Asset manifest row for '$figure' has invalid Method '$method'. Use direct-export or crop-fallback.")
         }
+        if ($allowedVisualMatches -notcontains $visualMatch) {
+            $errors.Add("Asset manifest row for '$figure' has invalid VisualMatch '$visualMatch'. Use complete, incomplete, or not-matched.")
+        }
         if (-not $chosenAsset) {
             $errors.Add("Asset manifest row for '$figure' has an empty ChosenAsset.")
         }
         if (-not $visualMatch) {
             $errors.Add("Asset manifest row for '$figure' has an empty VisualMatch.")
+        }
+        if ($method -eq "direct-export") {
+            if (-not $exportCandidates) {
+                $errors.Add("Asset manifest row for '$figure' uses direct-export without ExportCandidates.")
+            }
+            if ($visualMatch -ne "complete") {
+                $errors.Add("Asset manifest row for '$figure' uses direct-export but VisualMatch is not complete.")
+            }
         }
         if ($method -eq "crop-fallback" -and -not $fallbackReason) {
             $errors.Add("Asset manifest row for '$figure' uses crop-fallback without FallbackReason.")
@@ -334,6 +441,62 @@ if ($AssetManifestPath) {
     }
 }
 
+$formulaManifestRows = @()
+if ($FormulaManifestPath) {
+    $formulaManifestItem = Get-Item -LiteralPath $FormulaManifestPath
+    $formulaManifestDir = Split-Path -Parent $formulaManifestItem.FullName
+    $formulaRequiredFields = @(
+        "Formula",
+        "Page",
+        "MarkdownTag",
+        "ScreenshotAsset",
+        "Uncertainty",
+        "ReviewerNotes",
+        "Done"
+    )
+    $formulaManifestRows = @(Get-ManifestRows -Path $formulaManifestItem.FullName -RequiredFields $formulaRequiredFields)
+    if ($formulaManifestRows.Count -eq 0) {
+        $errors.Add("Formula manifest contains no formula rows.")
+    }
+
+    $manifestTagSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($row in $formulaManifestRows) {
+        $formula = ([string]$row.Formula).Trim()
+        $tag = ([string]$row.MarkdownTag).Trim()
+        $screenshotAsset = ([string]$row.ScreenshotAsset).Trim()
+        $uncertainty = ([string]$row.Uncertainty).Trim()
+        $done = ([string]$row.Done).Trim()
+
+        if (-not $formula) {
+            $errors.Add("Formula manifest row has an empty Formula value.")
+        }
+        if (-not $tag) {
+            $errors.Add("Formula manifest row for '$formula' has an empty MarkdownTag.")
+        } else {
+            [void]$manifestTagSet.Add($tag)
+            if (-not $markdownTagSet.Contains($tag)) {
+                $errors.Add("Formula manifest tag '$tag' is not present as a Markdown \\tag{...}.")
+            }
+        }
+        if (Test-UncertaintyValue -Value $uncertainty) {
+            if (-not $screenshotAsset) {
+                $errors.Add("Formula manifest row for '$formula' has uncertainty but no ScreenshotAsset.")
+            } elseif (-not (Test-PathCandidateExists -Value $screenshotAsset -ManifestDir $formulaManifestDir -MarkdownDir $markdownDir)) {
+                $errors.Add("Formula manifest ScreenshotAsset does not resolve: $screenshotAsset")
+            }
+        }
+        if (-not (Test-DoneValue -Value $done)) {
+            $errors.Add("Formula manifest row for '$formula' is not marked Done.")
+        }
+    }
+
+    foreach ($tag in $markdownTagSet) {
+        if (-not $manifestTagSet.Contains($tag)) {
+            $errors.Add("Markdown formula tag '$tag' is not recorded in the formula manifest.")
+        }
+    }
+}
+
 if ($errors.Count -gt 0) {
     Write-Error ($errors -join [Environment]::NewLine)
     exit 1
@@ -342,8 +505,12 @@ if ($errors.Count -gt 0) {
 [pscustomobject]@{
     Markdown = $markdownItem.FullName
     AssetManifest = $(if ($AssetManifestPath) { (Get-Item -LiteralPath $AssetManifestPath).FullName } else { $null })
+    Checklist = $(if ($ChecklistPath) { (Get-Item -LiteralPath $ChecklistPath).FullName } else { $null })
+    FormulaManifest = $(if ($FormulaManifestPath) { (Get-Item -LiteralPath $FormulaManifestPath).FullName } else { $null })
     ImageLinks = $imageMatches.Count
     ManifestRows = $manifestRows.Count
+    ChecklistRows = $checklistRows.Count
+    FormulaManifestRows = $formulaManifestRows.Count
     FormulaMentions = $formulaReports.Count
     Lines = $lines.Count
     Status = "OK"

@@ -9,7 +9,9 @@ param(
 
     [switch]$ListOnly,
 
-    [switch]$Clean
+    [switch]$Clean,
+
+    [switch]$AllowNone
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,9 +52,22 @@ if ($LASTEXITCODE -ne 0) {
 $magick = (Get-Command magick -ErrorAction SilentlyContinue).Source
 $created = Get-ChildItem -LiteralPath $outputPath -File | Where-Object {
     $_.Name -like "$Prefix-*" -and (-not $before.ContainsKey($_.FullName) -or $Clean)
-} | Sort-Object Name
+} | Sort-Object `
+    @{ Expression = { if ($_.BaseName -match '(\d+)$') { [int]$Matches[1] } else { [int]::MaxValue } } }, `
+    Name
 
 if ($created.Count -eq 0) {
+    if ($AllowNone) {
+        [pscustomobject]@{
+            FullName = $null
+            Width = $null
+            Height = $null
+            Bytes = 0
+            Extension = $null
+            Status = "NoImagesExported"
+        }
+        return
+    }
     throw "No image files were exported to $outputPath."
 }
 

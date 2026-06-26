@@ -23,16 +23,18 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 
 - Follow this gate in order for figure assets: list embedded objects -> export candidates -> inspect exported images -> map candidates to figures on rendered pages -> record the decision in the asset manifest -> only then crop fallback figures.
 - First list embedded image objects with `scripts/extract_pdf_images.ps1 -ListOnly`.
-- Export embedded images with `scripts/extract_pdf_images.ps1` and inspect candidates visually.
+- Export embedded images with `scripts/extract_pdf_images.ps1`; use `-AllowNone` when no embedded images is an acceptable fallback condition.
 - Create an asset decision manifest with `scripts/new_asset_decision_manifest.ps1`.
-- Use a directly exported image when it fully matches the paper figure on the rendered page.
-- Fall back to page cropping only when direct export is absent, incomplete, or visually different from the rendered page, and only after writing the fallback reason in the manifest.
+- Use a directly exported image when it fully matches the paper figure on the rendered page. Record `Method=direct-export`, `VisualMatch=complete`, and the exported file in `ExportCandidates`.
+- Fall back to page cropping only when direct export is absent, incomplete, or visually different from the rendered page, and only after writing `Method=crop-fallback`, `FallbackReason`, and a controlled `VisualMatch` value in the manifest.
 - Common direct-export failures: a bitmap underlay without vector labels, a transparency mask, missing axes or legends, missing color bars, split multi-panel figures, duplicated fragments, or objects whose order does not match the visual reading order.
+- Use only these manifest values: `Method` is `direct-export` or `crop-fallback`; `VisualMatch` is `complete`, `incomplete`, or `not-matched`.
 - Confirm exported image order by comparing against rendered pages; do not assume `pdfimages` numbering equals figure numbering.
 - Do not skip exported-image review just because rendered pages already exist.
 - Do not treat cropping as the default figure workflow.
 - Do not assume `pdfimages` file names or object order equal figure numbers.
 - Ensure every final Markdown figure link appears as a `ChosenAsset` in the asset decision manifest.
+- When cropping a fallback figure, call `scripts/crop_pdf_region.ps1` with `-AssetManifestPath`, `-Figure`, and `-RequireManifestDecision`.
 - Use direct exports only for images. Continue visual transcription for text, captions, formulas, and table data.
 
 ## Screenshot Precision Checklist
@@ -64,7 +66,8 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Preserve superscripts, subscripts, Greek letters, vector/bold notation, hats/bars/dots, fractions, roots, brackets, matrices, piecewise cases, integrals, sums, limits, differentials, units, and terminal punctuation.
 - For aligned or multi-line equations, use `aligned`; for piecewise definitions, use `cases`.
 - Verify equation references in prose still point to the correct displayed formula.
-- If a formula is visually uncertain, include a formula crop as an asset, transcribe only the confirmed parts, and record the uncertainty in the checklist.
+- For papers with numbered display formulas, create a formula manifest with `scripts/new_formula_manifest.ps1`; every Markdown `\tag{...}` should appear as a `MarkdownTag`.
+- If a formula is visually uncertain, include a formula crop as an asset, transcribe only the confirmed parts, and record the uncertainty in the checklist and formula manifest.
 - Do not replace formulas with explanations. Explanations can be added only if the user separately asks for them.
 
 ## Reference List Cutoff
@@ -79,7 +82,9 @@ Use this checklist for academic PDF-to-Markdown transcription when the source mu
 - Use the page-level checklist to confirm every body block, caption, table, formula, appendix block, and intentional reference-list omission is accounted for.
 - Check that all image links resolve from the Markdown file location.
 - Inspect all embedded images, not only their paths. Confirm each image is the intended figure/table/formula and is not a loose page screenshot.
-- Check the asset decision manifest when it exists. Confirm every Markdown image link is recorded as a chosen asset, every `crop-fallback` row has a reason, and every asset row is marked done after visual review.
+- Run `scripts/check_markdown_transcription.ps1` with `-ChecklistPath` and `-RequireAssetManifest` for full-paper jobs.
+- Check the asset decision manifest. Confirm every Markdown image link is recorded as a chosen asset, every `crop-fallback` row has a reason, and every asset row is marked done after visual review.
+- Check the formula manifest when present. Confirm every `MarkdownTag` appears in Markdown and every Markdown `\tag{...}` is recorded.
 - Search for accidental bibliography headings or numbered reference entries.
 - Check formula tags, equation references, key values, units, figure captions, table values, and appendix equation numbers.
 - Record any visually uncertain words or symbols in the final response rather than silently guessing.
