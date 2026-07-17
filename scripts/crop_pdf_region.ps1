@@ -15,7 +15,7 @@ param(
 
     [string]$AssetManifestPath,
 
-    [string]$Figure,
+    [string]$AssetId,
 
     [switch]$RequireManifestDecision,
 
@@ -24,165 +24,90 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Split-MarkdownTableRow {
-    param([string]$Line)
-
-    $trimmed = $Line.Trim()
-    if (-not $trimmed.StartsWith("|") -or -not $trimmed.EndsWith("|")) {
-        return $null
-    }
-
-    $inner = $trimmed.Trim([char[]]@("|"))
-    return @($inner -split "\|" | ForEach-Object { $_.Trim() })
-}
-
-function Get-ManifestRows {
-    param(
-        [string]$Path,
-        [string[]]$RequiredFields
-    )
-
-    $manifestItem = Get-Item -LiteralPath $Path
-    $extension = $manifestItem.Extension.ToLowerInvariant()
-
-    if ($extension -eq ".csv") {
-        return @(Import-Csv -LiteralPath $manifestItem.FullName)
-    }
-
-    if ($extension -ne ".md" -and $extension -ne ".markdown") {
-        throw "Asset manifest must be .csv or .md: $Path"
-    }
-
-    $manifestLines = Get-Content -LiteralPath $manifestItem.FullName
-    $headerIndex = -1
-    $headers = $null
-    for ($i = 0; $i -lt $manifestLines.Count; $i++) {
-        $cells = Split-MarkdownTableRow -Line $manifestLines[$i]
-        if (-not $cells) {
-            continue
-        }
-
-        $missing = @($RequiredFields | Where-Object { $_ -notin $cells })
-        if ($missing.Count -eq 0) {
-            $headerIndex = $i
-            $headers = $cells
-            break
-        }
-    }
-
-    if ($headerIndex -lt 0) {
-        throw "Unable to find asset manifest table header."
-    }
-
-    $rows = New-Object System.Collections.Generic.List[object]
-    for ($i = $headerIndex + 1; $i -lt $manifestLines.Count; $i++) {
-        $cells = Split-MarkdownTableRow -Line $manifestLines[$i]
-        if (-not $cells) {
-            continue
-        }
-        $isSeparator = $true
-        foreach ($cell in $cells) {
-            if ($cell -notmatch '^:?-{3,}:?$') {
-                $isSeparator = $false
-                break
-            }
-        }
-        if ($isSeparator) {
-            continue
-        }
-
-        $row = [ordered]@{}
-        for ($j = 0; $j -lt $headers.Count; $j++) {
-            $value = ""
-            if ($j -lt $cells.Count) {
-                $value = $cells[$j]
-            }
-            $row[$headers[$j]] = $value
-        }
-        $rows.Add([pscustomobject]$row)
-    }
-
-    return $rows.ToArray()
-}
-
 if ($Geometry -notmatch '^\d+x\d+\+\d+\+\d+$') {
-    throw "Geometry must use ImageMagick crop format WIDTHxHEIGHT+X+Y, for example 1200x700+300+450."
+    throw "Geometry must use WIDTHxHEIGHT+X+Y, for example 1200x700+300+450."
 }
-
 if ($MinWidth -lt 1 -or $MinHeight -lt 1) {
     throw "MinWidth and MinHeight must be positive integers."
 }
 
-if ($RequireManifestDecision -or $AssetManifestPath -or $Figure) {
-    if (-not $AssetManifestPath -or -not $Figure) {
-        throw "AssetManifestPath and Figure are required when enforcing a crop fallback manifest decision."
+$manifestRow = $null
+if ($RequireManifestDecision -or $AssetManifestPath -or $AssetId) {
+    if (-not $AssetManifestPath -or -not $AssetId) {
+        throw "AssetManifestPath and AssetId are required when enforcing a v2 crop decision."
     }
-
-    $requiredFields = @(
-        "Figure",
-        "RenderedPage",
-        "ExportCandidates",
-        "ChosenAsset",
-        "Method",
-        "VisualMatch",
-        "FallbackReason",
-        "ReviewerNotes",
-        "Done"
-    )
-    $manifestRows = @(Get-ManifestRows -Path $AssetManifestPath -RequiredFields $requiredFields)
-    $matchingRows = @($manifestRows | Where-Object { ([string]$_.Figure).Trim() -eq $Figure })
-    if ($matchingRows.Count -eq 0) {
-        throw "No asset manifest row found for figure: $Figure"
+    $manifestItem = Get-Item -LiteralPath $AssetManifestPath
+    if ($manifestItem.Extension -ne ".csv") {
+        throw "v2 asset manifests must be CSV files."
     }
-    if ($matchingRows.Count -gt 1) {
-        throw "Multiple asset manifest rows found for figure: $Figure"
+    $rows = @(Import-Csv -LiteralPath $manifestItem.FullName)
+    $matches = @($rows | Where-Object { $_.SchemaVersion -eq "2" -and $_.AssetId -eq $AssetId })
+    if ($matches.Count -ne 1) {
+        throw "Expected exactly one v2 asset manifest row for AssetId '$AssetId'."
     }
-
-    $row = $matchingRows[0]
-    $method = ([string]$row.Method).Trim()
-    $fallbackReason = ([string]$row.FallbackReason).Trim()
-    if ($method -ne "crop-fallback") {
-        throw "Figure '$Figure' is not recorded as crop-fallback in the asset manifest."
+    $manifestRow = $matches[0]
+    if ($manifestRow.AssetType -notin @("figure", "table", "formula")) {
+        throw "Asset '$AssetId' has non-croppable AssetType '$($manifestRow.AssetType)'."
     }
-    if (-not $fallbackReason) {
-        throw "Figure '$Figure' is crop-fallback but has no FallbackReason in the asset manifest."
+    if ($manifestRow.SourceMethod -ne "page-crop" -or -not $manifestRow.FallbackReason) {
+        throw "Asset '$AssetId' must record SourceMethod=page-crop and a FallbackReason before cropping."
+    }
+    $manifestDir = Split-Path -Parent $manifestItem.FullName
+    $auditDir = Split-Path -Parent $manifestDir
+    $packageRoot = Split-Path -Parent $auditDir
+    if ([System.IO.Path]::IsPathRooted($manifestRow.Path)) {
+        throw "Asset manifest paths must be relative."
+    }
+    $recordedOutput = [System.IO.Path]::GetFullPath((Join-Path $packageRoot $manifestRow.Path))
+    if ($recordedOutput -ne [System.IO.Path]::GetFullPath($OutputImage)) {
+        throw "OutputImage does not match the path recorded for AssetId '$AssetId'."
     }
 }
 
 $inputItem = Get-Item -LiteralPath $InputImage
 $outputParent = Split-Path -Parent $OutputImage
-if ($outputParent) {
-    New-Item -ItemType Directory -Force -Path $outputParent | Out-Null
+if ($outputParent -and -not (Test-Path -LiteralPath $outputParent)) {
+    New-Item -ItemType Directory -Path $outputParent | Out-Null
+}
+if (Test-Path -LiteralPath $OutputImage) {
+    throw "Refusing to overwrite an existing crop: $OutputImage"
 }
 
 $magick = (Get-Command magick -ErrorAction Stop).Source
+$magickVersionOutput = @(& $magick -version 2>&1)
+if ($LASTEXITCODE -ne 0 -or $magickVersionOutput.Count -eq 0) {
+    throw "Unable to determine ImageMagick version."
+}
 & $magick $inputItem.FullName -crop $Geometry +repage $OutputImage
 if ($LASTEXITCODE -ne 0) {
     throw "ImageMagick crop failed with exit code $LASTEXITCODE."
 }
-
 $outputItem = Get-Item -LiteralPath $OutputImage
 $dimensions = & $magick identify -format "%w %h" $outputItem.FullName
 if ($LASTEXITCODE -ne 0 -or -not $dimensions) {
     throw "Unable to read output image dimensions."
 }
-
 $parts = $dimensions -split '\s+'
 $width = [int]$parts[0]
 $height = [int]$parts[1]
-
 if ($width -lt $MinWidth -or $height -lt $MinHeight) {
     throw "Cropped image is smaller than requested minimum: ${width}x${height}, minimum ${MinWidth}x${MinHeight}."
 }
-
 if ($OpenAfterCrop) {
     Start-Process -FilePath $outputItem.FullName
 }
 
-[pscustomobject]@{
+[pscustomobject][ordered]@{
+    SchemaVersion = "2"
+    AssetId = $(if ($manifestRow) { $manifestRow.AssetId } else { "" })
+    AssetType = $(if ($manifestRow) { $manifestRow.AssetType } else { "" })
     FullName = $outputItem.FullName
+    Sha256 = (Get-FileHash -LiteralPath $outputItem.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     Width = $width
     Height = $height
     Bytes = $outputItem.Length
     Geometry = $Geometry
+    ToolPath = $magick
+    ToolVersion = ([string]$magickVersionOutput[0]).Trim()
+    Status = "OK"
 }

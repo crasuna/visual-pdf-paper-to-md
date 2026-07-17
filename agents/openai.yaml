@@ -1,4 +1,4 @@
 interface:
-  display_name: "Visual PDF Paper to Markdown"
-  short_description: "Verified PDF transcription with permitted text drafts"
-  default_prompt: "Use $visual-pdf-paper-to-md to convert this academic PDF paper into Markdown with complete body transcription, formula fidelity, direct image export before figure cropping, and strict full-paper manifests. Use visual-only mode when text extraction is forbidden; when the user permits PDF text extraction, use text-layer-assisted drafts with mandatory rendered-page visual verification."
+  display_name: "Archival PDF Paper Transcription"
+  short_description: "Source-bound full-paper Markdown transcription"
+  default_prompt: "Use $visual-pdf-paper-to-md to create or audit a faithful full-paper Markdown transcription. Bind the v2 package to the source PDF, use rendered pages as final authority, preserve all semantic content before the default reference cutoff, retain typed asset evidence, require fresh independent visual review, and atomically commit a matching FinalStatus before claiming verification."
