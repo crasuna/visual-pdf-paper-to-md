@@ -1,4 +1,4 @@
 interface:
-  display_name: "Archival PDF Paper Transcription"
+  display_name: "Visual PDF Paper to Markdown"
   short_description: "Source-bound full-paper Markdown transcription"
   default_prompt: "Use $visual-pdf-paper-to-md to create or audit a faithful full-paper Markdown transcription. Bind the v2 package to the source PDF, use rendered pages as final authority, preserve all semantic content before the default reference cutoff, retain typed asset evidence, require fresh independent visual review, and atomically commit a matching FinalStatus before claiming verification."
